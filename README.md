@@ -1,4 +1,4 @@
-# Dungeon Crawler - Final Project Proposal
+# Dungeon Crawler - Final Project
 
 **Name:** Steven Houser  
 **Course:** CS 121 - Data Structures & Objects  
