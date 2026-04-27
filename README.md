@@ -10,7 +10,7 @@
 
 **Title:** Dungeon Crawler
 
-**Description:** A text-based dungeon crawling game played through the command line, loosely inspired by the room-by-room loop in games like Slay the Spire. The player names their character and walks through a series of rooms in a fixed linear order, fighting enemies along the way. The game saves progress to a file so you can quit and come back where you left off. The core focus is getting the combat loop and room navigation working cleanly. Items and inventory are planned as stretch goals if time allows.
+**Description:** A text-based dungeon crawling game played through the command line, loosely inspired by the room-by-room loop in games like Slay the Spire. The player names their character and walks through a series of rooms in a fixed linear order, fighting enemies along the way. Each combat round offers Attack, Concentrate (skip your damage this turn; your next successful Attack is doubled and prints a "focused strike" line), or Heal (+5 HP, capped at max). The enemy retaliates after Heal, after Concentrate, and after any Attack that does not kill it. The game saves to a file so you can quit and resume. The core focus is the combat loop and room navigation. Items and inventory are planned as stretch goals if time allows.
 
 **Intended Users:** Me and anyone else who wants a simple CLI game with classic RPG mechanics. No install, no graphics, just run and play.
 
@@ -29,7 +29,7 @@
 
 ## Use Case Analysis
 
-Sample session showing how the game plays from the command line:
+Sample session showing how the game plays from the command line (output matches `Game.java` string literals and `getInfo()` formats):
 
 ```
 What is your name? Steve
@@ -45,13 +45,27 @@ Welcome, Steve. Your adventure begins...
 Action: 1
 
 A Goblin appears!
+Goblin | HP: 15/15
+
+0) Attack
+1) Concentrate (next attack deals double damage)
+2) Heal (restore 5 HP)
+Action: 0
+
 Steve attacks for 8 damage. Goblin HP: 7
 Goblin attacks for 4 damage. Steve HP: 16
-Steve attacks for 8 damage. Goblin HP: -1
+
+0) Attack
+1) Concentrate (next attack deals double damage)
+2) Heal (restore 5 HP)
+Action: 0
+
+Steve attacks for 8 damage. Goblin HP: 0
 You defeated the Goblin!
 
+--- Dark Entrance ---
+
 0) Check status
-1) Fight
 2) Move forward
 3) Save and quit
 Action: 0
@@ -61,21 +75,24 @@ HP: 16 / 20
 Attack Power: 8
 
 0) Check status
-1) Fight
 2) Move forward
 3) Save and quit
 Action: 3
 
 Game saved. Goodbye, Steve.
 
---- Next session ---
+--- Next session (after loading a save with the Goblin already defeated) ---
 
 Loading saved game...
 Welcome back, Steve!
 
 --- Dark Entrance ---
-...
+
+0) Check status
+2) Move forward
+3) Save and quit
 ```
+(The "Fight" option is hidden because the room has no living enemies.)
 
 ---
 
@@ -234,7 +251,7 @@ classDiagram
 - Set this.enemyType to enemyType
 
 `getInfo()`
-- Return a string with name, enemyType, and current HP
+- Return `enemyType + " | HP: " + hp + "/" + maxHp` (same pattern as the live game uses when a fight starts)
 
 `main()` (test)
 - Create a sample enemy
@@ -304,10 +321,10 @@ classDiagram
 - Create new Game()
 
 `Game()`
-- Try to call loadGame()
-- If load fails: prompt for player name, create new Player, call buildRooms()
-- Call start()
-- Call saveGame()
+- Call loadGame() (if `savegame.dat` is missing or read fails, `player` stays null and the catch block does nothing)
+- If player is null: prompt for name, `new Player(name)`, `buildRooms()`, print welcome
+- Call start() (main menu loop)
+- Call saveGame() (runs when the player quits with option 3, so progress is saved on exit)
 
 `buildRooms()`
 - Create 5 rooms with descriptions
@@ -338,37 +355,32 @@ classDiagram
 
 `battle()`
 - If room has no enemies: print "No enemies here." and return
-- Get first enemy from room's enemies list
-- Print enemy.getInfo()
+- Get first enemy from `currentRoom.enemies.get(0)`
+- Print "A " + enemy.getName() + " appears!" then print `enemy.getInfo()` on the next line
 - Set fightGoing to true, concentrated to false
 - While fightGoing is true:
-    - Show combat menu: 0) Attack, 1) Concentrate, 2) Heal
-    - If "0" (Attack): damage = attackPower; if concentrated, double damage and reset flag
-        - Call enemy.takeDamage(damage), print result
-        - If enemy not alive: print "You defeated [name]!", remove from list, set fightGoing to false
-        - Else: enemy attacks player, print result; if player not alive print "Game over." and exit
-    - If "1" (Concentrate): set concentrated to true; enemy attacks player this round
-        - If player not alive: print "Game over." and exit
-    - If "2" (Heal): call player.heal(5), print result; enemy attacks player this round
-        - If player not alive: print "Game over." and exit
-    - Else: print invalid input message
+    - Show combat menu (exact lines): 0) Attack; 1) Concentrate (next attack deals double damage); 2) Heal (restore 5 HP); prompt "Action: "
+    - If "0" (Attack): damage = `player.attackPower`; if concentrated, `damage *= 2`, clear concentrated, print player name + " unleashes a focused strike!"
+        - `enemy.takeDamage(damage)`; print the attack line with player name, damage, enemy name, and enemy `getHp()` after `takeDamage` (HP is floored at 0 in `Character`)
+        - If enemy not alive: print "You defeated the " + enemy.getName() + "!", remove index 0 from the list, set fightGoing to false
+        - Else: `player.takeDamage(enemy.attackPower)`; print enemy attack line; if player not alive print "You were defeated. Game over." and `System.exit(0)`
+    - If "1" (Concentrate): set concentrated to true, print name + " concentrates...", then enemy attacks as above; same game-over text on death
+    - If "2" (Heal): `player.heal(5)`; print heal line with current HP / max; then enemy attacks; same game-over on death
+    - Else: print "Not a valid option."
 
 `moveForward()`
-- If currentRoom.getNextRoom() is null: print "There are no more rooms. You win!" and exit
-- Set currentRoom to currentRoom.getNextRoom()
-- Print "You move into the next room."
+- If `currentRoom.hasEnemies()`: print "You must defeat all enemies before moving on." and return
+- If `currentRoom.getNextRoom() == null`: print "There are no more rooms. You win!" and `System.exit(0)`
+- Otherwise set `currentRoom` to `getNextRoom()` and print "You move into the next room."
 
 `saveGame()`
-- Try: open FileOutputStream to "savegame.dat", wrap in ObjectOutputStream
-- Write player with writeObject(), write currentRoom with writeObject(), close both
-- Catch Exception: print error message
-- Print "Game saved."
+- Try: `FileOutputStream` + `ObjectOutputStream` to "savegame.dat"; `writeObject(player)` then `writeObject(currentRoom)`; close streams
+- On success: print "Game saved. Goodbye, " + player.getName() + "."
+- Catch: print "Could not save game: " + exception message (no "Game saved" line)
 
 `loadGame()`
-- Try: open FileInputStream from "savegame.dat", wrap in ObjectInputStream
-- Read player, read currentRoom, cast both, close streams
-- Print "Loading saved game..."
-- Catch Exception: print error message
+- Try: `FileInputStream` + `ObjectInputStream` from "savegame.dat"; read `Player` then `Room`; close streams; print "Loading saved game..." and "Welcome back, " + player.getName() + "!"
+- Catch: do nothing (leave `player` null so a new game starts)
 
 ---
 
@@ -382,7 +394,7 @@ Each step leaves something that compiles and runs on its own:
 2. `Character.java` (abstract), `Enemy.java`, `Player.java` - test all three together with `main()`
 3. `Room.java` - add enemies, link rooms, test navigation
 4. `Game.java` - bootstrap, `buildRooms()`, main menu loop (no combat yet)
-5. `Game.battle()` - turn-based combat loop
+5. `Game.battle()` - turn-based combat with Attack / Concentrate / Heal menu
 6. `Game.saveGame()` / `loadGame()` - serialization
 7. Final testing and cleanup
 
@@ -397,13 +409,15 @@ Each step leaves something that compiles and runs on its own:
 
 ## Blackbelt Extension
 
-Player combat choices during battle, inspired by the CS 120 turn-based combat blackbelt. Instead of just pressing Enter to attack each round, the player now picks an action:
+Player combat choices during battle, inspired by the CS 120 turn-based combat blackbelt. Each round in a fight the player picks one of these actions:
 
 - **Attack** - deal normal damage (or double if concentrated)
 - **Concentrate** - skip your attack this round; your next attack deals double damage
 - **Heal** - restore 5 HP (capped at max); enemy still attacks this round
 
 This makes the later rooms actually require strategy. The Dragon Whelp hits for 10 damage per round and has 40 HP - you have to concentrate before attacking to take it down before it kills you.
+
+If the player reaches 0 HP, the program prints `You were defeated. Game over.` and exits (same string as in `Game.java`).
 
 The `heal()` method was added to `Character.java` so it is available to any subclass that needs it.
 
