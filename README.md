@@ -2,7 +2,7 @@
 
 **Name:** Steven Houser  
 **Course:** CS 121 - Data Structures & Objects  
-**Date:** 04/03/26
+**Date:** 04/27/26
 
 ---
 
@@ -10,7 +10,7 @@
 
 **Title:** Dungeon Crawler
 
-**Description:** A text-based dungeon crawling game played through the command line, loosely inspired by the room-by-room loop in games like Slay the Spire. The player names their character and walks through a series of rooms, fighting enemies and picking up items along the way. Each room can have enemies to defeat and items to grab. The game saves progress to a file so you can quit and come back where you left off. I picked this because I wanted to build something I would actually enjoy playing, and the core loop of clearing rooms and building up a character fits well within everything we have learned this semester.
+**Description:** A text-based dungeon crawling game played through the command line, loosely inspired by the room-by-room loop in games like Slay the Spire. The player names their character and walks through a series of rooms in a fixed linear order, fighting enemies along the way. The game saves progress to a file so you can quit and come back where you left off. The core focus is getting the combat loop and room navigation working cleanly. Items and inventory are planned as stretch goals if time allows.
 
 **Intended Users:** Me and anyone else who wants a simple CLI game with classic RPG mechanics. No install, no graphics, just run and play.
 
@@ -19,11 +19,11 @@
 **Technologies and Structures:**
 - Java, CLI only
 - Abstract class (`Character`) with `Player` and `Enemy` extending it
-- `ArrayList<Item>` for player inventory
-- `ArrayList<Enemy>` and `ArrayList<Item>` per room
-- Linked list pattern - each `Room` holds a `nextRoom` reference forming a chain
+- `ArrayList<Enemy>` per room
+- Linked list pattern - each `Room` holds a `nextRoom` reference forming a linear chain
 - Object serialization for save/load (`java.io.*`)
 - No external libraries or dependencies
+- Stretch: `Item` class with `damageModifier`/`hpModifier` fields, player inventory, item drops per room
 
 ---
 
@@ -37,13 +37,11 @@ What is your name? Steve
 Welcome, Steve. Your adventure begins...
 
 --- Dark Entrance ---
-A damp stone corridor. Something moves in the shadows.
 
 0) Check status
 1) Fight
-2) Pick up items
-3) Move forward
-4) Save and quit
+2) Move forward
+3) Save and quit
 Action: 1
 
 A Goblin appears!
@@ -54,35 +52,19 @@ You defeated the Goblin!
 
 0) Check status
 1) Fight
-2) Pick up items
-3) Move forward
-4) Save and quit
-Action: 2
-
-You found: Health Potion (potion, value: 20)
-You found: Rusty Sword (weapon, value: 5)
-Items added to inventory.
-
-0) Check status
-1) Fight
-2) Pick up items
-3) Move forward
-4) Save and quit
+2) Move forward
+3) Save and quit
 Action: 0
 
 --- Steve ---
 HP: 16 / 20
 Attack Power: 8
-Inventory:
-  - Health Potion (potion, value: 20)
-  - Rusty Sword (weapon, value: 5)
 
 0) Check status
 1) Fight
-2) Pick up items
-3) Move forward
-4) Save and quit
-Action: 4
+2) Move forward
+3) Save and quit
+Action: 3
 
 Game saved. Goodbye, Steve.
 
@@ -100,16 +82,15 @@ Welcome back, Steve!
 ## Data Design
 
 **What data does the program manage?**
-- The player's name, HP, attack power, and inventory
+- The player's name, HP, and attack power
+- For each room: a one-line name (shown in the header) and any enemies
 - Enemies in each room (name, type, HP, attack power)
-- Items in each room (name, type, value)
 - Which room the player is currently in
 - The full chain of rooms leading to the end
 
 **How is it represented?**
-- `Player` holds an `ArrayList<Item>` for the inventory
-- Each `Room` holds an `ArrayList<Enemy>` and an `ArrayList<Item>`
-- Rooms are linked using a `nextRoom` reference, forming a singly linked list the player walks through one room at a time
+- Each `Room` holds an `ArrayList<Enemy>`
+- Rooms are linked using a `nextRoom` reference, forming a singly linked list the player walks through one room at a time in a fixed linear order
 
 **Persistence:**
 - The `player` object and `currentRoom` (which carries the rest of the room chain) are each saved separately to `savegame.dat` using `ObjectOutputStream`
@@ -118,7 +99,7 @@ Welcome back, Steve!
 
 **Data aggregation:**
 - `Game` aggregates `Player` and the room chain
-- `Room` aggregates `ArrayList<Enemy>` and `ArrayList<Item>`
+- `Room` aggregates `ArrayList<Enemy>`
 - This mirrors the Bank project pattern - a controller class holds everything together
 
 **Data Relationships:**
@@ -137,14 +118,11 @@ classDiagram
         +int getMaxHp()
         +boolean isAlive()
         +void takeDamage(int amount)
+        +void heal(int amount)
         +String getInfo()
     }
     class Player {
-        -ArrayList inventory
         +Player(String name)
-        +void addItem(Item item)
-        +void usePotion()
-        +void showInventory()
         +String getInfo()
     }
     class Enemy {
@@ -152,27 +130,15 @@ classDiagram
         +Enemy(String name, String enemyType, int hp, int attackPower)
         +String getInfo()
     }
-    class Item {
-        -String name
-        -String type
-        -int value
-        +Item(String name, String type, int value)
-        +String getName()
-        +String getType()
-        +int getValue()
-    }
     class Room {
         -String description
         -ArrayList enemies
-        -ArrayList items
         -Room nextRoom
         +Room(String description)
         +void addEnemy(Enemy e)
-        +void addItem(Item i)
         +void setNextRoom(Room r)
         +Room getNextRoom()
         +boolean hasEnemies()
-        +boolean hasItems()
         +String getDescription()
     }
     class Game {
@@ -184,7 +150,6 @@ classDiagram
         +void start()
         +void checkStatus()
         +void battle()
-        +void pickUpItems()
         +void moveForward()
         +void saveGame()
         +void loadGame()
@@ -192,9 +157,7 @@ classDiagram
     }
     Character <|-- Player
     Character <|-- Enemy
-    Player --> Item
     Room --> Enemy
-    Room --> Item
     Room --> Room
     Game --> Player
     Game --> Room
@@ -209,39 +172,12 @@ classDiagram
 | **Abstraction** | `Character` is abstract; `getInfo()` is declared but not defined there |
 | **Inheritance** | `Player` and `Enemy` both extend `Character` |
 | **Polymorphism** | `getInfo()` returns different output for Player vs Enemy |
-| **Encapsulation** | All fields private or protected, accessed through getters/setters |
-| **Aggregation** | `Game` holds `Player` and room chain; `Room` holds ArrayList of enemies and items |
+| **Encapsulation** | Class data is grouped inside the classes that use it, with helper methods like `getInfo()`, `takeDamage()`, and `hasEnemies()` controlling most access |
+| **Aggregation** | `Game` holds `Player` and room chain; `Room` holds `ArrayList<Enemy>` |
 
 ---
 
 ## Algorithm / Class Design
-
----
-
-### Item class
-
-**Goal:** Represent a collectible item with a name, type, and value.
-
-**Variables needed:**
-- `name` - item name (String)
-- `type` - "weapon" or "potion" (String)
-- `value` - damage bonus or healing amount (int)
-
-`Item(String name, String type, int value)`
-- Set this.name, this.type, this.value
-
-`getName()`
-- Return this.name
-
-`getType()`
-- Return this.type
-
-`getValue()`
-- Return this.value
-
-`main()` (test)
-- Create a few sample items
-- Print their info to verify getters work
 
 ---
 
@@ -276,6 +212,10 @@ classDiagram
 - Subtract amount from hp
 - If hp < 0, set hp to 0
 
+`heal(int amount)`
+- Add amount to hp
+- If hp > maxHp, set hp to maxHp
+
 `getInfo()`
 - Declared abstract - subclasses must implement
 
@@ -304,58 +244,39 @@ classDiagram
 
 ### Player class
 
-**Goal:** Represent the player with an inventory of collected items.
+**Goal:** Represent the player character with their stats.
 
 **Variables needed:**
 - (inherits name, hp, maxHp, attackPower from Character)
-- `inventory` - list of items the player is carrying (ArrayList<Item>)
 
 `Player(String name)`
 - Call super(name, 20, 8)
-- Create an empty inventory ArrayList
-
-`addItem(Item item)`
-- Add item to inventory
-
-`usePotion()`
-- Loop through inventory to find first item where getType() equals "potion"
-- If found: add getValue() to hp, cap at maxHp, remove item from inventory, print result
-- If not found: print "No potions available."
-
-`showInventory()`
-- If inventory is empty: print "Inventory is empty."
-- Else: for each item in inventory, print name, type, value
 
 `getInfo()`
 - Return a string with name, current hp / maxHp, and attack power
 
 `main()` (test)
 - Create a Player
-- Add a couple of items
-- Print getInfo() and showInventory()
+- Print getInfo() to verify
 
 ---
 
 ### Room class
 
-**Goal:** Represent one location in the dungeon. Holds enemies, items, and a link to the next room.
+**Goal:** Represent one location in the dungeon. Holds enemies and a link to the next room.
 
 **Variables needed:**
-- `description` - room name and flavor text (String)
+- `description` - room name as shown in the `---` header (String)
 - `enemies` - enemies currently in this room (ArrayList<Enemy>)
-- `items` - items sitting on the floor (ArrayList<Item>)
 - `nextRoom` - the next room in the chain (Room)
 
 `Room(String description)`
 - Set this.description to description
-- Create empty enemies and items ArrayLists
+- Create empty enemies ArrayList
 - Set nextRoom to null
 
 `addEnemy(Enemy e)`
 - Add e to enemies list
-
-`addItem(Item i)`
-- Add i to items list
 
 `setNextRoom(Room r)`
 - Set this.nextRoom to r
@@ -365,9 +286,6 @@ classDiagram
 
 `hasEnemies()`
 - Return true if enemies list is not empty
-
-`hasItems()`
-- Return true if items list is not empty
 
 `getDescription()`
 - Return this.description
@@ -393,16 +311,15 @@ classDiagram
 
 `buildRooms()`
 - Create 5 rooms with descriptions
-- Add enemies and items to each room
+- Add enemies to each room
 - Chain rooms together with setNextRoom()
 - Set currentRoom to the first room
 
 `menu()`
 - Create a local Scanner
-- Print blank line, current room description, blank line
-- Print menu options (0 through 4)
+- Print blank line, the `---` line with `getDescription()`, blank line, then the menu
+- Print menu options (0 through 3)
 - Only show Fight if room has enemies
-- Only show Pick up items if room has items
 - Only show Move forward if nextRoom is not null
 - Prompt "Action: ", read and return response
 
@@ -412,31 +329,29 @@ classDiagram
     - Call menu(), store result in response
     - If response equals "0": call checkStatus()
     - Else if "1": call battle()
-    - Else if "2": call pickUpItems()
-    - Else if "3": call moveForward()
-    - Else if "4": set keepGoing to false
+    - Else if "2": call moveForward()
+    - Else if "3": set keepGoing to false
     - Else: print invalid input message
 
 `checkStatus()`
 - Print player.getInfo()
-- Call player.showInventory()
 
 `battle()`
 - If room has no enemies: print "No enemies here." and return
 - Get first enemy from room's enemies list
 - Print enemy.getInfo()
-- Set fightGoing to true
+- Set fightGoing to true, concentrated to false
 - While fightGoing is true:
-    - Player attacks: call enemy.takeDamage(player.attackPower), print result
-    - If enemy is not alive: print "You defeated [name]!", remove from list, set fightGoing to false
-    - Else: enemy attacks: call player.takeDamage(enemy.attackPower), print result
-    - If player is not alive: print "You were defeated. Game over.", exit
-
-`pickUpItems()`
-- If room has no items: print "Nothing to pick up." and return
-- For each item in room's items list: call player.addItem(item), print item name
-- Clear room's items list
-- Print "Items added to inventory."
+    - Show combat menu: 0) Attack, 1) Concentrate, 2) Heal
+    - If "0" (Attack): damage = attackPower; if concentrated, double damage and reset flag
+        - Call enemy.takeDamage(damage), print result
+        - If enemy not alive: print "You defeated [name]!", remove from list, set fightGoing to false
+        - Else: enemy attacks player, print result; if player not alive print "Game over." and exit
+    - If "1" (Concentrate): set concentrated to true; enemy attacks player this round
+        - If player not alive: print "Game over." and exit
+    - If "2" (Heal): call player.heal(5), print result; enemy attacks player this round
+        - If player not alive: print "Game over." and exit
+    - Else: print invalid input message
 
 `moveForward()`
 - If currentRoom.getNextRoom() is null: print "There are no more rooms. You win!" and exit
@@ -459,23 +374,46 @@ classDiagram
 
 ## Milestone Plan
 
+### Core (must ship)
+
 Each step leaves something that compiles and runs on its own:
 
-1. UML approved - submit proposal, get feedback
-2. `Item.java` - simplest class, test with `main()`
-3. `Character.java` (abstract), `Enemy.java`, `Player.java` - test all three together
-4. `Room.java` - add enemies/items, link rooms, test navigation
-5. `Game.java` - bootstrap, `buildRooms()`, main menu loop (no combat yet)
-6. `Game.battle()` - turn-based combat loop
-7. `Game.pickUpItems()` and `Player.usePotion()` - inventory management
-8. `Game.saveGame()` / `loadGame()` - serialization
-9. Final testing and cleanup
+1. Proposal approved - get feedback before writing code
+2. `Character.java` (abstract), `Enemy.java`, `Player.java` - test all three together with `main()`
+3. `Room.java` - add enemies, link rooms, test navigation
+4. `Game.java` - bootstrap, `buildRooms()`, main menu loop (no combat yet)
+5. `Game.battle()` - turn-based combat loop
+6. `Game.saveGame()` / `loadGame()` - serialization
+7. Final testing and cleanup
+
+### Stretch (if time allows)
+
+- `Item.java` with `damageModifier` / `hpModifier` fields
+- `Player` inventory (`ArrayList<Item>`), `addItem()`, `showInventory()`
+- `Room` item drops, `Game.pickUpItems()`
+- Apply item modifiers to player stats during combat
+
+---
+
+## Blackbelt Extension
+
+Player combat choices during battle, inspired by the CS 120 turn-based combat blackbelt. Instead of just pressing Enter to attack each round, the player now picks an action:
+
+- **Attack** - deal normal damage (or double if concentrated)
+- **Concentrate** - skip your attack this round; your next attack deals double damage
+- **Heal** - restore 5 HP (capped at max); enemy still attacks this round
+
+This makes the later rooms actually require strategy. The Dragon Whelp hits for 10 damage per round and has 40 HP - you have to concentrate before attacking to take it down before it kills you.
+
+The `heal()` method was added to `Character.java` so it is available to any subclass that needs it.
 
 ---
 
 ## Build Instructions
 
-*(To be added when code is written)*
-
+- **Compile:** `make Game.class`
 - **Run:** `make run`
+- **Test Enemy:** `make testEnemy`
+- **Test Player:** `make testPlayer`
 - **Clean:** `make clean`
+- **Debug:** `make debug`

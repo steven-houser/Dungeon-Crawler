@@ -1,6 +1,9 @@
 # Compiled class file
 *.class
 
+# Game save data
+savegame.dat
+
 # Log file
 *.log
 
